@@ -1,0 +1,203 @@
+{
+  "_说明": "这是你的资料文件。下面每一条 = 一个快捷键。字段含义：k=内部标识（别改）；sc=缩写（只用小写字母和数字）；label=速查表上显示的名字；en=英文内容；cn=中文内容（留空则这条不生成中文缩写）。改完在编辑页面点「安装到系统」即可生效。提醒：下面所有内容都是虚构的示例，安装前请全部替换成你自己的。",
+  "title": "我的求职快捷键",
+  "prefix": ";;",
+  "groups": [
+    {
+      "name": "基础信息",
+      "fields": [
+        {
+          "k": "name",
+          "sc": "name",
+          "label": "姓名（英文）",
+          "en": "Li Ming",
+          "cn": "李明"
+        },
+        {
+          "k": "email",
+          "sc": "email",
+          "label": "邮箱",
+          "en": "liming@example.com",
+          "cn": "liming@example.com"
+        },
+        {
+          "k": "phone",
+          "sc": "phone",
+          "label": "手机号",
+          "en": "(+86) 138 0000 0000",
+          "cn": "138 0000 0000"
+        },
+        {
+          "k": "addr",
+          "sc": "addr",
+          "label": "现居地址（英文）",
+          "en": "Kowloon, Hong Kong",
+          "cn": ""
+        },
+        {
+          "k": "portfolio",
+          "sc": "web",
+          "label": "作品集 / 个人主页",
+          "en": "https://example.com",
+          "cn": ""
+        }
+      ]
+    },
+    {
+      "name": "学历",
+      "fields": [
+        {
+          "k": "uni",
+          "sc": "uni",
+          "label": "学校（英文全称）",
+          "en": "Example University",
+          "cn": "示例大学"
+        },
+        {
+          "k": "degree",
+          "sc": "deg",
+          "label": "学位",
+          "en": "Master of Science",
+          "cn": "理学硕士"
+        },
+        {
+          "k": "major",
+          "sc": "maj",
+          "label": "专业",
+          "en": "Data Science",
+          "cn": "数据科学"
+        },
+        {
+          "k": "gpa",
+          "sc": "gpa",
+          "label": "GPA",
+          "en": "3.8 / 4.0",
+          "cn": "3.8 / 4.0"
+        },
+        {
+          "k": "grad",
+          "sc": "grad",
+          "label": "毕业时间",
+          "en": "Expected graduation: July 2028",
+          "cn": "预计 2028 年 7 月毕业"
+        }
+      ]
+    },
+    {
+      "name": "工作权 / 语言",
+      "fields": [
+        {
+          "k": "rtw",
+          "sc": "rtw",
+          "label": "工作权 / 签证（开放题高频）",
+          "en": "I am currently a postgraduate student in Hong Kong and will be eligible for the Immigration Arrangements for Non-local Graduates (IANG) visa upon graduation, which allows me to work in Hong Kong without employer sponsorship.",
+          "cn": "我目前在香港攻读硕士，毕业后可申请非本地毕业生留港就业安排（IANG 签证），无需雇主担保即可在港工作。"
+        },
+        {
+          "k": "lang",
+          "sc": "lang",
+          "label": "语言能力",
+          "en": "Native Mandarin; fluent English; basic Cantonese.",
+          "cn": "普通话母语；英语流利；粤语具备基础沟通能力。"
+        }
+      ]
+    },
+    {
+      "name": "实习经历",
+      "fields": [
+        {
+          "k": "comp",
+          "sc": "comp",
+          "label": "实习公司名",
+          "en": "Example Tech Co., Ltd.",
+          "cn": "示例科技有限公司"
+        },
+        {
+          "k": "comptitle",
+          "sc": "title",
+          "label": "职位名称",
+          "en": "Data Analytics Intern",
+          "cn": "数据分析实习生"
+        },
+        {
+          "k": "compdate",
+          "sc": "dates",
+          "label": "起止时间",
+          "en": "Jul 2025 – Sep 2025",
+          "cn": "2025 年 7 月 – 2025 年 9 月"
+        },
+        {
+          "k": "compblock",
+          "sc": "exp",
+          "label": "经历描述（整段，含项目符号）",
+          "en": "Data Analytics Intern, Example Tech Co., Ltd. (Jul 2025 – Sep 2025)\n• Cleaned and validated 200k+ rows of transactional data with Python and SQL, cutting reporting errors by 30%\n• Built 5 weekly dashboards in Power BI adopted by the operations team\n• Automated a recurring manual report, saving 6 hours per week",
+          "cn": "数据分析实习生，示例科技有限公司（2025 年 7 月 – 2025 年 9 月）\n• 使用 Python 与 SQL 清洗校验 20 万行以上交易数据，将报表错误率降低 30%\n• 用 Power BI 搭建 5 个周报看板，被运营团队日常采用\n• 将一份重复性人工报表自动化，每周节省 6 小时"
+        }
+      ]
+    },
+    {
+      "name": "技能与证书",
+      "fields": [
+        {
+          "k": "skills",
+          "sc": "skill",
+          "label": "技能清单",
+          "en": "Python (pandas, scikit-learn), SQL (window functions, CTEs), Power BI, Tableau, Excel (Power Query), Git",
+          "cn": "Python（pandas、scikit-learn）、SQL（窗口函数、CTE）、Power BI、Tableau、Excel（Power Query）、Git"
+        },
+        {
+          "k": "cert",
+          "sc": "cert",
+          "label": "证书",
+          "en": "Google Data Analytics Professional Certificate",
+          "cn": "Google 数据分析专业证书"
+        }
+      ]
+    },
+    {
+      "name": "常见开放题",
+      "fields": [
+        {
+          "k": "why",
+          "sc": "why",
+          "label": "为什么申请这个岗位",
+          "en": "I am drawn to this role because it sits exactly where my training in data science meets real commercial decision-making. In my internship I saw how much value a well-built dashboard can create for a frontline team, and I want to keep doing that at a larger scale.",
+          "cn": "我申请这个岗位，是因为它正好落在我的数据科学训练与真实商业决策的交汇处。实习期间我亲眼看到一份做得好的看板能给一线团队带来多大价值，我希望在更大的平台上继续做这件事。"
+        },
+        {
+          "k": "strength",
+          "sc": "stren",
+          "label": "你的优势",
+          "en": "I combine hands-on data skills with the habit of shipping: in my last internship I took a manual reporting process end to end and automated it, rather than stopping at analysis.",
+          "cn": "我的优势是动手能力和交付习惯的结合：上一段实习中我把一个纯人工的报表流程从头到尾自动化了，而不是停在分析阶段。"
+        },
+        {
+          "k": "avail",
+          "sc": "avail",
+          "label": "到岗时间 / 可工作时间",
+          "en": "I am available to start immediately and can commit at least 4 days per week for a minimum of 6 months.",
+          "cn": "我可以立即到岗，每周至少可工作 4 天，可稳定投入 6 个月以上。"
+        }
+      ]
+    },
+    {
+      "name": "薪资与其他",
+      "fields": [
+        {
+          "k": "salary",
+          "sc": "salary",
+          "label": "期望薪资",
+          "en": "I am open to discussion and would prefer to align with the range budgeted for this role.",
+          "cn": "薪资方面可以商议，我更希望参考该岗位既定的预算区间。"
+        },
+        {
+          "k": "notice",
+          "sc": "notice",
+          "label": "通知期",
+          "en": "One week.",
+          "cn": "一周。"
+        }
+      ]
+    }
+  ]
+}

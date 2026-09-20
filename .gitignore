@@ -1,0 +1,10 @@
+# 运行期状态，每台电脑各自生成，不要提交
+data/state.json
+data/jobkit.log
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
