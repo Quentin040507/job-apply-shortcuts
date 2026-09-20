@@ -22,6 +22,14 @@
   * 每写一条都记进 data/state.json，卸载与更新只动自己写过的条目，
     绝不碰你自己在「系统设置 → 键盘 → 文本替换」里加的其它内容
   * 中英文分别用 `;;xxx` 与 `;;xxxcn` 两个缩写，会自动同时写入半角与全角分号两套
+  * 写的是 macOS 真正生效的那份数据：~/Library/KeyboardServices/TextReplacements.db
+    （Core Data SQLite）。旧版的 NSUserDictionaryReplacementItems plist 只作兼容性附带写入——
+    因为新 macOS 只在首次迁移时读它一次，光写 plist 会出现「装好了却按不出来」。
+
+⚠️ 一个绕不开的坑：这份数据会通过 iCloud 在你自己的设备间同步（iPhone / iPad）。
+   如果别的设备上存着一份旧的文本替换，iCloud 一同步就可能把这里的覆盖掉。
+   本工具写入时会标记「需要上传」，让这台电脑成为权威 —— 代价是那些条目也会出现在
+   你的其它设备上。不想这样，就在「系统设置 → 你的名字 → iCloud」里关掉「键盘」同步。
 """
 
 import json
@@ -40,7 +48,13 @@ PROFILE = os.path.join(DATA, "profile.json")
 STATE = os.path.join(DATA, "state.json")
 
 DOMAIN = "NSGlobalDomain"
-KEY = "NSUserDictionaryReplacementItems"
+KEY = "NSUserDictionaryReplacementItems"     # 2007 年那代旧存储，现在只作兼容性附带写入
+# macOS 真正生效的文本替换：Core Data SQLite，且由 NSPersistentCloudKitContainer
+# 通过 iCloud（CloudKit Zone: TextReplacements）在设备间同步。
+TR_DB = os.environ.get("JOBKIT_TR_DB") or os.path.expanduser(
+    "~/Library/KeyboardServices/TextReplacements.db")
+ENTITY = "TextReplacementEntry"              # Core Data 实体名
+CD_EPOCH = 978307200                         # Core Data 时间戳零点：2001-01-01 UTC
 PORT_START = 8770
 
 IS_MAC = sys.platform == "darwin"
@@ -111,10 +125,114 @@ def with_fullwidth(entries):
 
 
 # ---------------------------------------------------------------- 系统写入
+#
+# 这里是整个工具最关键的地方，踩过坑才搞清楚：
+#
+#   macOS 真正生效的文本替换存在 ~/Library/KeyboardServices/TextReplacements.db
+#   （Core Data SQLite），并由 iCloud 在设备间同步。
+#   NSGlobalDomain 里的 NSUserDictionaryReplacementItems 是 10.5 时代的旧存储，
+#   新系统只在首次迁移时读一次 —— 只写它的话，系统设置里看不到、键盘也按不出来。
+#
+# 所以：以数据库为准，plist 只作为兼容性附带写入（老系统 / 别的读取方还能看到）。
 
-def read_system():
-    r = subprocess.run(["defaults", "export", DOMAIN, "-"],
-                       capture_output=True)
+
+def db_available():
+    return os.path.exists(TR_DB)
+
+
+def _cols(cur):
+    return [r[1] for r in cur.execute("PRAGMA table_info(ZTEXTREPLACEMENTENTRY)")]
+
+
+def read_db():
+    """读出生效中的文本替换 -> {缩写: 内容}"""
+    if not db_available():
+        return {}
+    import sqlite3
+    try:
+        con = sqlite3.connect("file:" + TR_DB + "?mode=ro", uri=True)
+    except Exception:
+        return {}
+    try:
+        if "ZSHORTCUT" not in _cols(con.cursor()):
+            return {}
+        return {sc: ph for sc, ph in con.execute(
+            "SELECT ZSHORTCUT, ZPHRASE FROM ZTEXTREPLACEMENTENTRY WHERE ZWASDELETED=0")
+            if sc}
+    except Exception:
+        return {}
+    finally:
+        con.close()
+
+
+def _entity_row(cur):
+    """拿到 TextReplacementEntry 的实体编号与当前最大主键"""
+    r = cur.execute("SELECT Z_ENT, Z_MAX FROM Z_PRIMARYKEY WHERE Z_NAME=?",
+                    (ENTITY,)).fetchone()
+    if r:
+        return r[0], (r[1] or 0)
+    ent = cur.execute("SELECT COALESCE(MAX(Z_ENT),0)+1 FROM Z_PRIMARYKEY").fetchone()[0]
+    cur.execute("INSERT INTO Z_PRIMARYKEY (Z_ENT, Z_NAME, Z_SUPER, Z_MAX) VALUES (?,?,0,0)",
+                (ent, ENTITY))
+    return ent, 0
+
+
+def write_db(want, drop):
+    """把 want({缩写:内容}) 写入数据库、把 drop(集合) 标记删除。返回 (新增, 更新, 清理)"""
+    import sqlite3
+    import time as _t
+    import uuid
+    con = sqlite3.connect(TR_DB)
+    con.execute("PRAGMA busy_timeout=15000")
+    cur = con.cursor()
+    if "ZSHORTCUT" not in _cols(cur):
+        con.close()
+        raise RuntimeError("TextReplacements.db 的结构和预期不符，没有改动它")
+    ent, zmax = _entity_row(cur)
+
+    rows = {sc: (pk, ph, bool(del_))
+            for pk, sc, ph, del_ in cur.execute(
+                "SELECT Z_PK, ZSHORTCUT, ZPHRASE, ZWASDELETED FROM ZTEXTREPLACEMENTENTRY")}
+    now = _t.time() - CD_EPOCH
+    added = updated = removed = 0
+
+    for sc, ph in want.items():
+        if sc in rows:
+            pk, old, gone = rows[sc]
+            if gone or old != ph:
+                cur.execute(
+                    """UPDATE ZTEXTREPLACEMENTENTRY
+                          SET ZPHRASE=?, ZWASDELETED=0, ZNEEDSSAVETOCLOUD=1,
+                              Z_OPT=COALESCE(Z_OPT,1)+1, ZTIMESTAMP=?
+                        WHERE Z_PK=?""", (ph, now, pk))
+                updated += 1
+        else:
+            zmax += 1
+            cur.execute(
+                """INSERT INTO ZTEXTREPLACEMENTENTRY
+                   (Z_PK, Z_ENT, Z_OPT, ZNEEDSSAVETOCLOUD, ZWASDELETED,
+                    ZTIMESTAMP, ZPHRASE, ZSHORTCUT, ZUNIQUENAME, ZREMOTERECORDINFO)
+                   VALUES (?,?,1,1,0,?,?,?,?,NULL)""",
+                (zmax, ent, now, ph, sc, str(uuid.uuid4()).upper()))
+            added += 1
+
+    for sc in drop:
+        if sc in rows and not rows[sc][2]:
+            cur.execute(
+                """UPDATE ZTEXTREPLACEMENTENTRY
+                      SET ZWASDELETED=1, ZNEEDSSAVETOCLOUD=1,
+                          Z_OPT=COALESCE(Z_OPT,1)+1
+                    WHERE Z_PK=?""", (rows[sc][0],))
+            removed += 1
+
+    cur.execute("UPDATE Z_PRIMARYKEY SET Z_MAX=? WHERE Z_ENT=?", (zmax, ent))
+    con.commit()
+    con.close()
+    return added, updated, removed
+
+
+def read_plist():
+    r = subprocess.run(["defaults", "export", DOMAIN, "-"], capture_output=True)
     if r.returncode != 0:
         return []
     try:
@@ -127,56 +245,57 @@ def read_system():
         return []
 
 
-def write_system(items):
-    """只导入这一个键的片段 plist，不碰其它系统设置键"""
-    import tempfile
-    tmp = os.path.join(tempfile.gettempdir(), "_jobkit_write.plist")
-    with open(tmp, "wb") as f:
-        plistlib.dump({KEY: items}, f, fmt=plistlib.FMT_XML)
-    r = subprocess.run(["defaults", "import", DOMAIN, tmp],
-                       capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError("写入系统设置失败：" + (r.stderr or "").strip())
+def write_plist_merged(want, drop):
+    """兼容性附带写入：把 want 合并进旧 plist，并从里面移除 drop。失败不影响主流程"""
+    try:
+        items = read_plist()
+        by = {e.get("replace"): e for e in items}
+        for sc, ph in want.items():
+            if sc in by:
+                by[sc]["with"] = ph
+                by[sc]["on"] = 1
+            else:
+                items.append({"replace": sc, "with": ph, "on": 1})
+        items = [e for e in items if e.get("replace") not in drop]
+        import tempfile
+        tmp = os.path.join(tempfile.gettempdir(), "_jobkit_write.plist")
+        with open(tmp, "wb") as f:
+            plistlib.dump({KEY: items}, f, fmt=plistlib.FMT_XML)
+        subprocess.run(["defaults", "import", DOMAIN, tmp], capture_output=True)
+    except Exception:
+        pass
 
 
 def install(profile):
     """把 profile 的内容装进系统；返回日志行"""
     if not IS_MAC:
         return ["❌ 本工具依赖 macOS 的系统「文本替换」功能，当前系统不支持。"]
-    if not os.path.exists("/usr/bin/defaults"):
-        return ["❌ 找不到 defaults 命令，无法写入。请确认这是 macOS。"]
 
     entries = with_fullwidth(build_entries(profile))
     if not entries:
         return ["⚠️ 没有可安装的内容——请先在编辑页面填写至少一个字段。"]
 
+    if not db_available():
+        return [
+            "⚠️ 没找到系统的文本替换数据库：",
+            "   " + TR_DB,
+            "",
+            "   说明这台电脑还从没用过「文本替换」功能，系统还没建好这个库。",
+            "   请先做一次：系统设置 → 键盘 → 文本替换 → 点 ＋ 随便加一条",
+            "   （例如缩写 abc、内容 test），然后回到这里再点一次「安装到系统」。",
+        ]
+
+    want = {e["sc"]: e["phrase"] for e in entries}
     state = load_json(STATE, {"written": []})
     old = set(state.get("written", []))
-
-    items = read_system()
-    by_sc = {e.get("replace"): e for e in items}
-    want = {e["sc"]: e["phrase"] for e in entries}
-
-    added = updated = removed = 0
-    for sc, phrase in want.items():
-        if sc in by_sc:
-            if by_sc[sc].get("with") != phrase:
-                by_sc[sc]["with"] = phrase
-                by_sc[sc]["on"] = 1
-                updated += 1
-        else:
-            item = {"replace": sc, "with": phrase, "on": 1}
-            items.append(item)
-            by_sc[sc] = item
-            added += 1
-
-    # 清理：上一版装过、这一版已经没有的条目（只删自己写过的）
     gone = old - set(want)
-    if gone:
-        items = [e for e in items if e.get("replace") not in gone]
-        removed = len(gone)
 
-    write_system(items)
+    try:
+        added, updated, removed = write_db(want, gone)
+    except Exception as e:
+        return [f"❌ 写入系统文本替换失败：{type(e).__name__}: {e}"]
+
+    write_plist_merged(want, gone)
 
     save_json(STATE, {
         "written": sorted(want),
@@ -191,6 +310,7 @@ def install(profile):
         f"   共 {len(want)} 条（英文 {n_en} · 中文 {n_cn}），含全角/半角两套写法",
         "",
         "现在去任意输入框试一下：打一个缩写，再敲空格。",
+        "若没立刻生效：关掉再重开那个 App；仍然不行就重启一次电脑。",
     ]
 
 
@@ -201,11 +321,16 @@ def uninstall():
     mine = set(state.get("written", []))
     if not mine:
         return ["ℹ️ 没有记录到本工具写入过任何条目，未做改动。"]
+    if not db_available():
+        return ["ℹ️ 没找到文本替换数据库，未做改动。"]
 
-    items = read_system()
-    kept = [e for e in items if e.get("replace") not in mine]
-    n = len(items) - len(kept)
-    write_system(kept)
+    n = len(mine & set(read_db()))
+    try:
+        write_db({}, mine)
+    except Exception as e:
+        return [f"❌ 卸载失败：{e}"]
+    write_plist_merged({}, mine)
+
     save_json(STATE, {"written": [], "updated_at":
                       datetime.datetime.now().isoformat(timespec="seconds")})
     return [f"✅ 已移除本工具写入的 {n} 条，其它设置（包括你自己加的内容）未动。"]
@@ -214,14 +339,14 @@ def uninstall():
 def status():
     state = load_json(STATE, {"written": []})
     mine = set(state.get("written", []))
-    items = read_system()
-    have = {e.get("replace") for e in items}
-    missing = sorted(mine - have)
+    have = read_db()
+    missing = sorted(mine - set(have))
     return {
         "platform_ok": IS_MAC,
-        "installed": len(mine & have),
+        "db_ok": db_available(),
+        "installed": len(mine & set(have)),
         "missing": len(missing),
-        "total_in_system": len(items),
+        "total_in_system": len(have),
         "updated_at": state.get("updated_at", ""),
         "title": state.get("title", ""),
     }
@@ -336,7 +461,10 @@ EDITOR_HTML = r"""<!DOCTYPE html>
     <b>缩写怎么定：</b>只用小写字母和数字，例如 <code>name</code> → 打 <code>；；name</code>。
     中文版会自动加 cn 后缀（<code>；；namecn</code>），不用自己填。<br>
     <b>为什么不能用连字符：</b>中文输入法下 <code>-</code> 会打成全角的 <code>－</code>，缩写里带连字符会永远触发不了。<br>
-    <b>装完怎么用：</b>打完缩写后必须再敲<b>空格或回车</b>才会展开（这是最常踩的坑）。
+    <b>装完怎么用：</b>打完缩写后必须再敲<b>空格或回车</b>才会展开（这是最常踩的坑）。<br>
+    <b>装完没反应？</b>先关掉再重开那个 App；仍然不行就重启一次电脑，让系统重新加载词库。<br>
+    <b>会不会影响我别的地方：</b>这些内容会通过 iCloud 同步到你登录的其它 Apple 设备（iPhone / iPad）。
+    不想这样就在「系统设置 → 你的名字 → iCloud」里关掉「键盘」同步。
   </div>
   <div id="list"></div>
   <pre id="log" class="hide"></pre>

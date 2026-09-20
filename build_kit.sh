@@ -37,7 +37,8 @@ EXCLUDE = {"data/state.json", "data/jobkit.log",
 n = 0
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     for dirpath, dirnames, filenames in os.walk("."):
-        dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+        # .git 是仓库自己的东西，绝不能进分发包
+        dirnames[:] = [d for d in dirnames if d not in ("__pycache__", ".git")]
         for fn in sorted(filenames):
             if fn == ".DS_Store" or fn.endswith(".pyc"):
                 continue
